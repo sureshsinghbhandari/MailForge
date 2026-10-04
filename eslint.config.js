@@ -41,6 +41,11 @@ export default tseslint.config(
     },
   },
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: { 'no-console': 'off' },
+  },
+  {
     files: ['backend/test/**/*.ts', 'tests/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: { '@typescript-eslint/no-non-null-assertion': 'off', 'no-console': 'off' },

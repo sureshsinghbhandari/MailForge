@@ -64,6 +64,8 @@ What the overlay does: requires secrets; `NODE_ENV=production` (Secure cookies, 
 
 **Receiving mail from other machines.** By default SMTP is published on loopback only. If applications on *other* hosts must deliver mail, set `SMTP_BIND_ADDRESS` to this host's **private** IP (not `0.0.0.0` on a public host) and firewall port 1025 to those hosts (see [SECURITY.md](SECURITY.md)). To accept mail on the standard port 25 set `MAILPIT_SMTP_PORT=25`.
 
+> **Step-by-step for real inbound mail (domain, server, firewall, TLS, verification): [RECEIVING-EXTERNAL-EMAIL.md](RECEIVING-EXTERNAL-EMAIL.md).** The section below is the reference for the DNS records.
+
 ## DNS setup (you configure it; MailForge never touches DNS)
 
 To receive mail from the internet for `mailtest.example.com` (skip this if your apps send to MailForge directly over a private network):

@@ -94,6 +94,8 @@ Full API reference: [docs/API.md](docs/API.md) · [docs/openapi.yaml](docs/opena
 
 **Windows shortcut:** double-click `start-dev.bat`. It installs packages on first run, writes a dev `.env` (embedded PostgreSQL, backend on port 3100), and opens three windows: SMTP stand-in (`127.0.0.1:11025`), backend, and frontend at http://localhost:5173. Log in with `admin@mailtest.local` / `dev-admin-password-123`. Close the windows to stop.
 
+**Want Gmail / Office mail to arrive?** That needs a real domain, an MX record and a server with inbound port 25 – see [docs/RECEIVING-EXTERNAL-EMAIL.md](docs/RECEIVING-EXTERNAL-EMAIL.md) (includes `scripts/check-inbound.mjs`, a no-mail-sent checker for DNS, reachability and relay safety).
+
 **Sending a test mail locally:** `npm run send-test-mail -w tests -- test-abc123@mailtest.local` (add a subject and body as extra arguments). Mail from Gmail/Outlook cannot reach `mailtest.local`: it is not a real internet domain, so receiving mail from outside needs a real domain, an MX record and a reachable port 25 (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#dns-setup-you-configure-it-mailforge-never-touches-dns)).
 
 Manual steps:
@@ -136,6 +138,8 @@ Copy `.env.example`; every variable is documented there and validated at startup
 | `VERIFICATION_CODE_KEYWORDS` / `_PATTERNS` | empty | Extend code detection |
 
 ## Production
+
+For real inbound email from Gmail/Office, follow [docs/RECEIVING-EXTERNAL-EMAIL.md](docs/RECEIVING-EXTERNAL-EMAIL.md).
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build

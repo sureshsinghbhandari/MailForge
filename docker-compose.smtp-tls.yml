@@ -1,0 +1,26 @@
+# OPTIONAL: offer STARTTLS on the public SMTP port using the certificate Caddy already obtained.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.smtp-tls.yml up -d
+#
+# Why: Gmail encrypts opportunistically, but many corporate / Office 365 senders ENFORCE TLS and will
+# refuse to deliver to a server that does not offer it.
+#
+# Requirements (see docs/RECEIVING-EXTERNAL-EMAIL.md):
+#   * the MX hostname must be the same name as PUBLIC_HOSTNAME (e.g. mail.example.com),
+#   * the proxy service must have fetched its certificate first (open https://$PUBLIC_HOSTNAME once),
+#   * Let's Encrypt certificates last ~90 days and Mailpit reads the file only at start-up, so restart it
+#     about monthly:  0 4 1 * *  cd /opt/mailforge && docker compose restart mailpit
+#
+# NOTE: this file was written from Caddy's and Mailpit's documentation and has not been run.
+services:
+  mailpit:
+    volumes:
+      - caddy-data:/caddy:ro
+    environment:
+      MP_SMTP_TLS_CERT: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME}/${PUBLIC_HOSTNAME}.crt
+      MP_SMTP_TLS_KEY: /caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${PUBLIC_HOSTNAME}/${PUBLIC_HOSTNAME}.key
+      # Opportunistic TLS: offered but not required, so plain-text-only senders can still deliver.
+      MP_SMTP_REQUIRE_STARTTLS: "false"
+    depends_on:
+      proxy:
+        condition: service_started

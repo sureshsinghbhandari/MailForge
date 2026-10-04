@@ -74,6 +74,16 @@ describe('docker-compose.prod.yml', () => {
   });
 });
 
+describe('docker-compose.smtp-tls.yml', () => {
+  it('only adds certificates: no published ports, no relay settings', async () => {
+    const compose = await load('docker-compose.smtp-tls.yml');
+    const mailpit = compose.services['mailpit'];
+    expect(mailpit?.ports).toBeUndefined();
+    expect(Object.keys(mailpit?.environment ?? {}).join(' ')).not.toMatch(/RELAY|ALLOWED_RECIPIENTS/);
+    expect(mailpit?.environment?.['MP_SMTP_REQUIRE_STARTTLS']).toBe('false');
+  });
+});
+
 describe('.env.example', () => {
   it('documents every variable the config schema accepts without committing secrets', async () => {
     const example = await readFile(path.join(root, '.env.example'), 'utf8');
