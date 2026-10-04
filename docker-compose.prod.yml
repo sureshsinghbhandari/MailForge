@@ -1,0 +1,60 @@
+# Production overlay for a private server:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What changes compared to the development stack:
+#   * secrets are REQUIRED (compose refuses to start without them),
+#   * NODE_ENV=production (strict config validation, Secure cookies, no weak admin password),
+#   * nothing but 80/443 (Caddy, automatic HTTPS) is published to the network,
+#   * the backend/API, database and Mailpit web UI are only reachable inside the Docker network,
+#   * Mailpit's SMTP port is published on loopback only unless you opt in (SMTP_BIND_ADDRESS).
+# Requires Docker Compose >= 2.24 (uses the !override tag).
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+  mailpit:
+    ports: !override
+      # Only needed when applications OUTSIDE this Docker network must deliver mail.
+      # Set SMTP_BIND_ADDRESS to a private interface IP (never 0.0.0.0 on a public host) and
+      # restrict it with a firewall – see docs/SECURITY.md.
+      - "${SMTP_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1025}:1025"
+
+  backend:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mailforge}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-mailforge}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD (12+ characters) in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Two proxy hops sit in front of the backend: Caddy -> nginx (frontend) -> backend.
+      TRUST_PROXY: ${TRUST_PROXY:-2}
+      ALLOWED_ORIGINS: https://${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME in .env}
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,21 @@
+{
+  "name": "@mailforge/tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "fake-mailpit": "tsx support/fake-mailpit.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/smtp-server": "^3.5.13",
+    "nodemailer": "^10.0.14",
+    "smtp-server": "^3.19.17",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

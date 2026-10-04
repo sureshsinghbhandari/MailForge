@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: MailForge API
+  version: 1.0.0
+  description: |
+    Private disposable-email testing platform. See docs/API.md for prose documentation.
+    All responses except GET /api/health use the envelope `{success, data, meta?}` / `{success:false, error:{code,message,details?}}`.
+servers:
+  - url: http://localhost:8080
+  - url: http://localhost:3000
+security:
+  - bearerKey: []
+  - sessionCookie: []
+tags:
+  - { name: Health }
+  - { name: Auth }
+  - { name: Mailboxes }
+  - { name: Messages }
+  - { name: Test API }
+  - { name: API keys }
+  - { name: System }
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      security: []
+      summary: Liveness of the app, database and SMTP capture server
+      responses:
+        '200': { description: healthy, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
+        '503': { description: unhealthy, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Log in (sets the mf_session cookie)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } } } }
+      responses:
+        '200': { description: Logged in; returns user and CSRF token }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /api/auth/logout:
+    post: { tags: [Auth], summary: Log out, responses: { '200': { description: ok } } }
+  /api/auth/me:
+    get: { tags: [Auth], summary: Current principal, responses: { '200': { description: ok }, '401': { $ref: '#/components/responses/Error' } } }
+  /api/mailboxes:
+    post:
+      tags: [Mailboxes]
+      summary: Create a temporary mailbox
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prefix: { type: string, maxLength: 32, example: signup }
+                ttlMinutes: { type: integer, minimum: 1, example: 60 }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/MailboxEnvelope' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [Mailboxes]
+      summary: List mailboxes
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, expired] } }
+        - { name: search, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/pageSize' }
+      responses:
+        '200': { description: ok }
+  /api/mailboxes/expired:
+    delete:
+      tags: [Mailboxes]
+      summary: Delete all expired mailboxes now (requires confirm=true)
+      parameters:
+        - { name: confirm, in: query, required: true, schema: { type: string, enum: ['true'] } }
+      responses:
+        '200': { description: Number deleted }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/mailboxes/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { tags: [Mailboxes], summary: Get a mailbox, responses: { '200': { description: ok }, '404': { $ref: '#/components/responses/Error' } } }
+    delete: { tags: [Mailboxes], summary: Delete a mailbox with its messages and attachments, responses: { '200': { description: ok }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/mailboxes/{id}/messages:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Mailboxes]
+      summary: List/search messages in a mailbox
+      parameters:
+        - { $ref: '#/components/parameters/filter' }
+        - { name: search, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/pageSize' }
+      responses: { '200': { description: ok } }
+    delete:
+      tags: [Mailboxes]
+      summary: Delete all messages in the mailbox (requires confirm=true)
+      parameters: [{ name: confirm, in: query, required: true, schema: { type: string, enum: ['true'] } }]
+      responses: { '200': { description: ok }, '400': { $ref: '#/components/responses/Error' } }
+  /api/messages:
+    get:
+      tags: [Messages]
+      summary: Search messages across mailboxes
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: subject, in: query, schema: { type: string } }
+        - { name: code, in: query, schema: { type: string } }
+        - { name: url, in: query, schema: { type: string } }
+        - { name: mailboxId, in: query, schema: { type: string, format: uuid } }
+        - { name: dateFrom, in: query, schema: { type: string, format: date-time } }
+        - { name: dateTo, in: query, schema: { type: string, format: date-time } }
+        - { $ref: '#/components/parameters/filter' }
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/pageSize' }
+      responses: { '200': { description: ok } }
+  /api/messages/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { tags: [Messages], summary: Message detail (sanitised HTML, headers, codes, links), responses: { '200': { description: ok }, '404': { $ref: '#/components/responses/Error' } } }
+    patch:
+      tags: [Messages]
+      summary: Mark read/unread
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [isRead], properties: { isRead: { type: boolean } } } } } }
+      responses: { '200': { description: ok } }
+    delete: { tags: [Messages], summary: Delete a message, responses: { '200': { description: ok } } }
+  /api/messages/{id}/raw:
+    parameters: [{ $ref: '#/components/parameters/id' }, { name: download, in: query, schema: { type: boolean } }]
+    get: { tags: [Messages], summary: Raw RFC 5322 message (message.eml with download=true), responses: { '200': { description: raw message, content: { text/plain: {}, message/rfc822: {} } } } }
+  /api/messages/{id}/html:
+    parameters: [{ $ref: '#/components/parameters/id' }, { name: images, in: query, schema: { type: boolean } }]
+    get: { tags: [Messages], summary: Sanitised HTML document for a sandboxed iframe (own CSP header), responses: { '200': { description: html, content: { text/html: {} } }, '404': { $ref: '#/components/responses/Error' } } }
+  /api/messages/{id}/codes:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { tags: [Messages], summary: Extracted verification codes, responses: { '200': { description: ok } } }
+  /api/messages/{id}/links:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { tags: [Messages], summary: Extracted links, responses: { '200': { description: ok } } }
+  /api/messages/{id}/attachments:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get: { tags: [Messages], summary: List attachments, responses: { '200': { description: ok } } }
+  /api/messages/{id}/attachments/{attachmentId}:
+    parameters:
+      - { $ref: '#/components/parameters/id' }
+      - { name: attachmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get: { tags: [Messages], summary: Download an attachment (always as a download), responses: { '200': { description: bytes, content: { application/octet-stream: {} } }, '410': { $ref: '#/components/responses/Error' } } }
+  /api/test/mailbox:
+    post:
+      tags: [Test API]
+      summary: Create a mailbox for an automated test
+      requestBody: { content: { application/json: { schema: { type: object, properties: { prefix: { type: string }, ttlMinutes: { type: integer } } } } } }
+      responses: { '201': { description: '{email, mailboxId, expiresAt}' } }
+  /api/test/mailbox/{id}/wait-for-email:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Test API]
+      summary: Wait for a matching email (query-string criteria)
+      parameters:
+        - { name: timeoutMs, in: query, schema: { type: integer, default: 30000 } }
+        - { name: subject, in: query, schema: { type: string } }
+        - { name: subjectRegex, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: messageId, in: query, schema: { type: string } }
+        - { name: receivedAfter, in: query, schema: { type: string, format: date-time } }
+      responses: { '200': { description: 'received true/false', content: { application/json: { schema: { $ref: '#/components/schemas/WaitResult' } } } } }
+    post:
+      tags: [Test API]
+      summary: Wait for a matching email (JSON criteria)
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/WaitCriteria' } } } }
+      responses: { '200': { description: 'received true/false', content: { application/json: { schema: { $ref: '#/components/schemas/WaitResult' } } } } }
+  /api/test/wait-for-email:
+    post:
+      tags: [Test API]
+      summary: Wait for a matching email (mailboxId in the body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WaitCriteria'
+                - { type: object, required: [mailboxId], properties: { mailboxId: { type: string, format: uuid } } }
+      responses: { '200': { description: ok } }
+  /api/api-keys:
+    get: { tags: [API keys], summary: List API keys (session only), responses: { '200': { description: ok } } }
+    post:
+      tags: [API keys]
+      summary: Create an API key; the plaintext key is returned once (session only)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 100 } } } } } }
+      responses: { '201': { description: Created } }
+  /api/api-keys/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    delete: { tags: [API keys], summary: Revoke an API key (session only), responses: { '200': { description: ok } } }
+  /api/dashboard:
+    get: { tags: [System], summary: Dashboard counters and recent messages, responses: { '200': { description: ok } } }
+  /api/system/status:
+    get: { tags: [System], summary: Health, version, last cleanup and non-secret settings, responses: { '200': { description: ok } } }
+  /api/system/cleanup:
+    post: { tags: [System], summary: Run the cleanup job now (session only), responses: { '200': { description: ok } } }
+  /api/events:
+    get:
+      tags: [System]
+      summary: Server-Sent Events stream (EMAIL_RECEIVED, MAILBOX_CREATED, MAILBOX_DELETED, MESSAGE_DELETED, MESSAGES_CLEARED)
+      responses: { '200': { description: event stream, content: { text/event-stream: {} } } }
+components:
+  securitySchemes:
+    bearerKey: { type: http, scheme: bearer, description: 'API key (mf_…) created on the API Keys page' }
+    sessionCookie: { type: apiKey, in: cookie, name: mf_session, description: 'Web session; state-changing calls also need X-CSRF-Token' }
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    pageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+    filter:
+      name: filter
+      in: query
+      schema: { type: string, enum: [all, unread, read, attachments, codes, links, today, hour], default: all }
+  responses:
+    Error:
+      description: Error envelope
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [healthy, unhealthy] }
+        database: { type: string, enum: [healthy, unhealthy] }
+        smtp: { type: string, enum: [healthy, unhealthy] }
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: MAILBOX_NOT_FOUND }
+            message: { type: string }
+            details: {}
+    Mailbox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, example: test-a8f72c@mailtest.local }
+        prefix: { type: string }
+        domain: { type: string }
+        status: { type: string, enum: [active, expired] }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        messageCount: { type: integer }
+        unreadCount: { type: integer }
+    MailboxEnvelope:
+      type: object
+      properties:
+        success: { type: boolean }
+        data: { $ref: '#/components/schemas/Mailbox' }
+    WaitCriteria:
+      type: object
+      properties:
+        timeoutMs: { type: integer, default: 30000 }
+        subject: { type: string }
+        subjectRegex: { type: string, description: PostgreSQL POSIX regex, case-insensitive }
+        from: { type: string }
+        to: { type: string }
+        messageId: { type: string }
+        receivedAfter: { type: string, format: date-time }
+    WaitResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: object
+          properties:
+            received: { type: boolean }
+            messageId: { type: string }
+            mailboxId: { type: string }
+            from: { type: string }
+            to: { type: string }
+            subject: { type: string }
+            receivedAt: { type: string, format: date-time }
+            verificationCode: { type: string, nullable: true }
+            verificationCodes: { type: array, items: { type: string } }
+            verificationUrl: { type: string, nullable: true }
+            links: { type: array, items: { type: string } }

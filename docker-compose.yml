@@ -1,0 +1,144 @@
+# MailForge – local development / single-host stack.
+#
+#   docker compose up -d
+#
+# Every published port is bound to 127.0.0.1 only. For a shared server use docker-compose.prod.yml
+# (see docs/DEPLOYMENT.md). Defaults below are for development; production values are REQUIRED there.
+
+name: mailforge
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mailforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mailforge-dev-password}
+      POSTGRES_DB: ${POSTGRES_DB:-mailforge}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Postgres needs a few capabilities to switch to its own user and chown the data dir on first start.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No published ports: only the backend (same Docker network) talks to the database.
+
+  mailpit:
+    <<: *hardening
+    image: ${MAILPIT_IMAGE:-axllent/mailpit:v1.27}
+    environment:
+      MP_SMTP_BIND_ADDR: 0.0.0.0:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      # Open-relay protection: the SMTP server rejects (550) any RCPT TO outside our mail domain(s).
+      # Keep in sync with MAIL_DOMAIN. No MP_SMTP_RELAY_* / SMTP auth settings exist, so Mailpit has
+      # nowhere to forward mail even if it wanted to.
+      MP_SMTP_ALLOWED_RECIPIENTS: ${SMTP_ALLOWED_RECIPIENTS_REGEX:-^[^@\s]+@(mailtest\.local)$$}
+      MP_SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-50}
+      MP_MAX_MESSAGE_SIZE: ${MAX_EMAIL_SIZE_MB:-20}
+      # Messages are moved into PostgreSQL and removed here within about a second; this is a safety cap.
+      MP_MAX_MESSAGES: 500
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit-data:/data
+    ports:
+      # SMTP for the application under test, and Mailpit's own debugging UI. Loopback only.
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_WEB_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      APP_NAME: ${APP_NAME:-Private Mail Testing}
+      APP_PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mailforge}:${POSTGRES_PASSWORD:-mailforge-dev-password}@postgres:5432/${POSTGRES_DB:-mailforge}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      MAILPIT_API_URL: http://mailpit:8025
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-mailtest.local}
+      DEFAULT_MAILBOX_TTL_MINUTES: ${DEFAULT_MAILBOX_TTL_MINUTES:-60}
+      MAX_MAILBOX_TTL_MINUTES: ${MAX_MAILBOX_TTL_MINUTES:-1440}
+      MAX_ACTIVE_MAILBOXES: ${MAX_ACTIVE_MAILBOXES:-1000}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-60}
+      MESSAGE_RETENTION_HOURS: ${MESSAGE_RETENTION_HOURS:-24}
+      ATTACHMENT_RETENTION_HOURS: ${ATTACHMENT_RETENTION_HOURS:-24}
+      MAILBOX_RETENTION_HOURS: ${MAILBOX_RETENTION_HOURS:-24}
+      MAX_EMAIL_SIZE_MB: ${MAX_EMAIL_SIZE_MB:-20}
+      MAX_ATTACHMENT_SIZE_MB: ${MAX_ATTACHMENT_SIZE_MB:-10}
+      API_AUTH_ENABLED: ${API_AUTH_ENABLED:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mailtest.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-dev-admin-password-123}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10/15m}
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-1000/hour}
+      MAILBOX_CREATION_RATE_LIMIT: ${MAILBOX_CREATION_RATE_LIMIT:-100/hour}
+      SEARCH_RATE_LIMIT: ${SEARCH_RATE_LIMIT:-600/hour}
+      DOWNLOAD_RATE_LIMIT: ${DOWNLOAD_RATE_LIMIT:-600/hour}
+    volumes:
+      - attachments:/data/attachments
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    ports:
+      # Direct API access for scripts and CI on the same machine (dev only; removed in the prod overlay).
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  frontend:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+volumes:
+  pgdata:
+  mailpit-data:
+  attachments:

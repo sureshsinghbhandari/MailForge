@@ -1,0 +1,15 @@
+# TLS termination for production (docker-compose.prod.yml).
+#
+# With a public DNS name Caddy obtains and renews a Let's Encrypt certificate automatically.
+# For an internal-only host, add `tls internal` inside the site block to use Caddy's local CA.
+{$PUBLIC_HOSTNAME} {
+	# Compression is intentionally off: it can buffer the Server-Sent Events stream.
+	reverse_proxy frontend:8080 {
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
