@@ -6,7 +6,8 @@
   "scripts": {
     "test": "playwright test",
     "typecheck": "tsc --noEmit",
-    "fake-mailpit": "tsx support/fake-mailpit.ts"
+    "fake-mailpit": "tsx support/fake-mailpit.ts",
+    "send-test-mail": "tsx support/send-test-mail.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

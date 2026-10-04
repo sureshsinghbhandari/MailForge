@@ -94,6 +94,8 @@ Full API reference: [docs/API.md](docs/API.md) · [docs/openapi.yaml](docs/opena
 
 **Windows shortcut:** double-click `start-dev.bat`. It installs packages on first run, writes a dev `.env` (embedded PostgreSQL, backend on port 3100), and opens three windows: SMTP stand-in (`127.0.0.1:11025`), backend, and frontend at http://localhost:5173. Log in with `admin@mailtest.local` / `dev-admin-password-123`. Close the windows to stop.
 
+**Sending a test mail locally:** `npm run send-test-mail -w tests -- test-abc123@mailtest.local` (add a subject and body as extra arguments). Mail from Gmail/Outlook cannot reach `mailtest.local`: it is not a real internet domain, so receiving mail from outside needs a real domain, an MX record and a reachable port 25 (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#dns-setup-you-configure-it-mailforge-never-touches-dns)).
+
 Manual steps:
 
 Requires Node.js ≥ 22.
