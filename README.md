@@ -92,6 +92,10 @@ Full API reference: [docs/API.md](docs/API.md) · [docs/openapi.yaml](docs/opena
 
 ## Development without Docker
 
+**Windows shortcut:** double-click `start-dev.bat`. It installs packages on first run, writes a dev `.env` (embedded PostgreSQL, backend on port 3100), and opens three windows: SMTP stand-in (`127.0.0.1:11025`), backend, and frontend at http://localhost:5173. Log in with `admin@mailtest.local` / `dev-admin-password-123`. Close the windows to stop.
+
+Manual steps:
+
 Requires Node.js ≥ 22.
 
 ```bash

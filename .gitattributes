@@ -4,3 +4,4 @@ Dockerfile text eol=lf
 *.conf text eol=lf
 Caddyfile text eol=lf
 *.sql text eol=lf
+*.bat text eol=crlf
